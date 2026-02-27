@@ -157,6 +157,12 @@ async function main() {
         
         // Apply scrolling
         else {
+            // Allow TouchpadOverscrollHistoryNavigation (2-finger swipe) to work
+            // If horizontal scroll dominates and shift is not pressed, let the event through
+            if (Math.abs(deltaX) > Math.abs(deltaY) * 2 && Math.abs(deltaX) > 10 && !event.shiftKey) {
+                return true;
+            }
+
             element.scrollBy({left: deltaX * scrollFactor, top: deltaY * scrollFactor, behavior:'auto'});
             
         }
