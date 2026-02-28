@@ -1,393 +1,240 @@
 'use strict';
 
 let scrollFactor = 1.0;
-
-// *** SETTINGS FETCHERS ***
-
-// Get setting key variable
-async function getSetting(key) {
-    return new Promise((resolve, reject) => {
-        try {
-            chrome.storage.local.get(key, function (items) {
-                resolve(items);
-            })
-        }
-        catch (ex) {
-            reject(ex);
-        }
-    });
-}
-
-async function getScrollFactor() {
-    let result = await getSetting('scrollFactor');
-
-    return result.scrollFactor;
-}
-
-async function getDisableExtension() {
-    let result = await getSetting('disableExtension');
-
-    return result.disableExtension;
-}
-
-async function getSmoothScroll() {
-    let result = await getSetting('smoothScroll');
-
-    return result.smoothScroll;
-}
-
-// FLING SETTINGS
-
-async function getFlingEnabled() {
-    let result = await getSetting('flingEnabled');
-    return result.flingEnabled === undefined ? 'true' : result.flingEnabled;
-}
-async function getFlingFriction() {
-    let result = await getSetting('flingFriction');
-    return result.flingFriction === undefined ? 0.95 : parseFloat(result.flingFriction);
-}
-async function getFlingThreshold() {
-    let result = await getSetting('flingThreshold');
-    return result.flingThreshold === undefined ? 1.0 : parseFloat(result.flingThreshold);
-}
-
 let flingEnabled = true;
 let flingFriction = 0.95;
 let flingThreshold = 1.0;
 
-let flingScrollHistory = [];
-let flingRafId = null;
-let flingTimeoutId = null;
+let recentWheelEvents = [];
+let isFlinging = false;
+let flingRaf = null;
+let flingTimeout = null;
 
-// *** INIT ***
-
-init();
+async function getSetting(key) {
+    return new Promise(resolve => {
+        try {
+            chrome.storage.local.get(key, items => resolve(items));
+        } catch (e) {
+            resolve({});
+        }
+    });
+}
 
 async function init() {
-    let disableExtension = await getDisableExtension();
-    let smoothScroll = await getSmoothScroll();
+    let disabled = await getSetting('disableExtension');
+    if (disabled && disabled.disableExtension === 'true') return;
 
-    // Check if extension is disabled. If not run main function.
-    if (disableExtension == 'false') {
+    let sf = await getSetting('scrollFactor');
+    if (sf && sf.scrollFactor !== undefined) scrollFactor = parseFloat(sf.scrollFactor);
 
-        // Disable smooth scroll if needed
-        if (smoothScroll == 'false') {
-            try {
-                window.onload = () => {
-                    document.querySelectorAll("html")[0].style.scrollBehavior = "auto";
-                    document.querySelector("body").style.scrollBehavior = "auto"
-                }
-            }
-            catch (err) {
-                console.log(err);
-            }
+    let ss = await getSetting('smoothScroll');
+    if (ss && ss.smoothScroll === 'false') {
+        const disableCSSSmoothScroll = () => {
+            document.documentElement.style.scrollBehavior = "auto";
+            if (document.body) document.body.style.scrollBehavior = "auto";
+        };
+        disableCSSSmoothScroll();
+        window.addEventListener('DOMContentLoaded', disableCSSSmoothScroll);
+
+        let observer = new MutationObserver(() => disableCSSSmoothScroll());
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    }
+
+    let fE = await getSetting('flingEnabled');
+    flingEnabled = fE && fE.flingEnabled !== undefined ? fE.flingEnabled === 'true' : true;
+
+    let fF = await getSetting('flingFriction');
+    flingFriction = fF && fF.flingFriction !== undefined ? parseFloat(fF.flingFriction) : 0.95;
+
+    let fT = await getSetting('flingThreshold');
+    flingThreshold = fT && fT.flingThreshold !== undefined ? parseFloat(fT.flingThreshold) : 1.0;
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+
+    // Support iframes dynamically
+    window.addEventListener('message', (message) => {
+        if (message.data && message.data.CSS === 'ChangeScrollSpeed') {
+            // Re-dispatch or handle wheel event from iframe
+            let event = message.data;
+            event.target = getFrameByEvent(message.source);
+            if (event.target) handleWheel(event);
         }
+    });
+}
 
-        // Run main function
-        main();
+function getFrameByEvent(source) {
+    const iframes = document.getElementsByTagName('iframe');
+    for (let i = 0; i < iframes.length; i++) {
+        if (iframes[i].contentWindow === source) return iframes[i];
+    }
+    return null;
+}
+
+function stopFling() {
+    if (flingRaf) {
+        cancelAnimationFrame(flingRaf);
+        flingRaf = null;
+    }
+    isFlinging = false;
+}
+
+function handleWheel(e) {
+    if (e.defaultPrevented || e.ctrlKey) return;
+
+    let deltaX = e.deltaX;
+    let deltaY = e.deltaY;
+
+    if (e.shiftKey && !(e.ctrlKey || e.altKey || e.metaKey)) {
+        deltaX = deltaX || deltaY;
+        deltaY = 0;
+    }
+
+    // Determine target
+    let target = getScrollableParent(e.target, deltaX !== 0, deltaY !== 0);
+    if (!target) return;
+
+    // Stop any ongoing fling since user touched the trackpad/wheel
+    stopFling();
+
+    const now = performance.now();
+
+    // Allow native history navigation if dominant horizontal scroll at edge
+    if (Math.abs(deltaX) > Math.abs(deltaY) * 2 && Math.abs(deltaX) > 10 && !e.shiftKey) {
+        // Let it through for back/forward swipe
+        return;
+    }
+
+    let scaledX = deltaX * scrollFactor;
+    let scaledY = deltaY * scrollFactor;
+
+    // Apply immediate scroll to prevent lagging caused by batching
+    applyScroll(target, scaledX, scaledY);
+
+    if (flingEnabled) {
+        recentWheelEvents.push({ x: scaledX, y: scaledY, time: now, target: target });
+        // Keep only events from the last 150ms
+        recentWheelEvents = recentWheelEvents.filter(ev => now - ev.time < 150);
+
+        clearTimeout(flingTimeout);
+        flingTimeout = setTimeout(() => attemptFling(target), 50);
+    }
+
+    e.preventDefault();
+}
+
+function applyScroll(target, dx, dy) {
+    // Special cases
+    if (window.location.hostname === 'youtube.com') {
+        let ytdApp = target.getElementsByTagName ? target.getElementsByTagName('ytd-app')[0] : null;
+        if (ytdApp && window.document.fullscreenElement) {
+            target = ytdApp;
+        }
+    } else if (window.location.hostname === 'www.nexusmods.com') {
+        target = document.scrollingElement || document.documentElement;
+    }
+
+    if (target === document.documentElement || target === document.scrollingElement || target === document.body) {
+        window.scrollBy({ left: dx, top: dy, behavior: 'auto' });
+    } else if (target.scrollBy) {
+        target.scrollBy({ left: dx, top: dy, behavior: 'auto' });
     }
 }
 
-// Main function
-async function main() {
+function attemptFling(target) {
+    if (recentWheelEvents.length < 3) return;
 
-    let smoothScroll = await getSmoothScroll();
+    const now = performance.now();
+    const lastEvent = recentWheelEvents[recentWheelEvents.length - 1];
 
-    //Check for changes in html element to deal with banners changing smooth scrolling behavior
-    let mutationObserver = new MutationObserver(function (mutations) {
-        mutations.forEach(async function () {
+    // Only fling if the last event was very recent (meaning the user lifted fingers while moving)
+    if (now - lastEvent.time > 100) return;
 
-            smoothScroll = await getSmoothScroll();
+    const firstEvent = recentWheelEvents[0];
+    const dt = lastEvent.time - firstEvent.time;
+    if (dt <= 0) return;
 
-            if (smoothScroll == 'false') {
-                window.onload = () => {
-                    document.querySelectorAll("html")[0].style.scrollBehavior = "auto";
-                    document.querySelector("body").style.scrollBehavior = "auto"
-                }
-
-            }
-        });
-    });
-
-    try {
-        mutationObserver.observe(document.querySelectorAll("html")[0], {
-            attributes: true,
-        });
-    } catch (err) {
-        console.log(err)
+    let sumX = 0, sumY = 0;
+    for (let i = 1; i < recentWheelEvents.length; i++) {
+        sumX += recentWheelEvents[i].x;
+        sumY += recentWheelEvents[i].y;
     }
 
+    let velX = sumX / dt; // px per ms
+    let velY = sumY / dt;
 
-    if (scrollFactor !== undefined) {
-        scrollFactor = await getScrollFactor();
-    }
+    let speed = Math.sqrt(velX * velX + velY * velY);
+    if (speed < flingThreshold) return;
 
-    let _flingEnabled = await getFlingEnabled();
-    flingEnabled = (_flingEnabled === 'true');
-    flingFriction = await getFlingFriction();
-    flingThreshold = await getFlingThreshold();
+    isFlinging = true;
+    startFlingAnimation(target, velX, velY, now);
+}
 
-    // This function runs every time a scroll is made
-    function wheel(event) {
-        if (flingRafId) {
-            cancelAnimationFrame(flingRafId);
-            flingRafId = null;
-        }
+function startFlingAnimation(target, velX, velY, startTime) {
+    let lastTime = startTime;
 
-        const target = event.target;
+    function step(currentTime) {
+        if (!isFlinging) return;
 
-        if (event.defaultPrevented || event.ctrlKey) {
-            return true;
-        }
+        let frameDt = currentTime - lastTime;
+        lastTime = currentTime;
 
-        let deltaX = event.deltaX;
-        let deltaY = event.deltaY;
+        if (frameDt > 100) frameDt = 16.666; // Prevent jumps on lag
 
-        if (event.shiftKey && !(event.ctrlKey || event.altKey || event.metaKey)) {
-            deltaX = deltaX || deltaY;
-            deltaY = 0;
-        }
+        let decay = Math.pow(flingFriction, frameDt / 16.666);
+        velX *= decay;
+        velY *= decay;
 
-        const xOnly = (deltaX && !deltaY);
-
-        let element = overflowingAncestor(target, xOnly);
-
-        if (element === getScrollRoot()) {
-            element = window;
-        }
-
-        const isFrame = window.top !== window.self;
-
-        if (!element) {
-            if (isFrame) {
-
-                if (event.preventDefault) {
-                    // TODO
-                    // Is there a better solution for the iFrames?
-                    // Disabled due to cross site security blocking on some sites
-                    // Will hopefully not cause issues
-                }
-            }
-
-            return true;
-        }
-
-        /* SPECIAL SOLUTIONS */
-
-        // Youtube fullscreen
-
-        if (window.location.hostname === 'youtube.com') {
-            youtubeFullScreen = element.getElementsByTagName('ytd-app')[0]
-
-            if (youtubeFullScreen && window.document.fullscreenElement) {
-                youtubeFullScreen.scrollBy({ left: deltaX * scrollFactor, top: deltaY * scrollFactor, behavior: 'auto' });
-            }
-        }
-
-        else if (window.location.hostname === 'www.nexusmods.com') {
-            getRealRoot().scrollBy({ left: deltaX * scrollFactor, top: deltaY * scrollFactor, behavior: 'auto' });
-        }
-
-        // Apply scrolling
-        else {
-            // Allow TouchpadOverscrollHistoryNavigation (2-finger swipe) to work
-            // If horizontal scroll dominates and shift is not pressed, let the event through
-            if (Math.abs(deltaX) > Math.abs(deltaY) * 2 && Math.abs(deltaX) > 10 && !event.shiftKey) {
-                return true;
-            }
-
-            element.scrollBy({ left: deltaX * scrollFactor, top: deltaY * scrollFactor, behavior: 'auto' });
-
-        }
-
-        if (flingEnabled) {
-            const now = performance.now();
-            flingScrollHistory.push({
-                x: deltaX * scrollFactor,
-                y: deltaY * scrollFactor,
-                t: now,
-                element: element
-            });
-
-            flingScrollHistory = flingScrollHistory.filter(item => now - item.t < 100);
-
-            if (flingTimeoutId) clearTimeout(flingTimeoutId);
-
-            flingTimeoutId = setTimeout(() => {
-                startFling();
-            }, 50);
-        }
-
-        event.preventDefault();
-    }
-
-    function startFling() {
-        if (flingScrollHistory.length < 2) return;
-
-        const latest = flingScrollHistory[flingScrollHistory.length - 1];
-        const oldest = flingScrollHistory[0];
-
-        // Compute delta time in ms 
-        let dt = latest.t - oldest.t;
-        if (dt === 0) dt = 16.6;
-
-        let sumX = 0;
-        let sumY = 0;
-        for (let item of flingScrollHistory) {
-            sumX += item.x;
-            sumY += item.y;
-        }
-
-        // Velocity array: px per ms
-        let velX = sumX / dt;
-        let velY = sumY / dt;
-
-        let speed = Math.sqrt(velX * velX + velY * velY);
-        if (speed < flingThreshold) return;
-
-        let currentVelX = velX;
-        let currentVelY = velY;
-        let lastTime = performance.now();
-        let targetElement = latest.element;
-
-        function MathClamp(val, min, max) {
-            return Math.min(Math.max(val, min), max);
-        }
-
-        function flingStep(time) {
-            let frameDt = time - lastTime;
-            lastTime = time;
-
-            // Frame time cap to prevent huge jumps if tab was inactive
-            if (frameDt > 100) frameDt = 16.666;
-
-            let frictionFactor = Math.pow(flingFriction, frameDt / 16.666);
-            currentVelX *= frictionFactor;
-            currentVelY *= frictionFactor;
-
-            let moveX = currentVelX * frameDt;
-            let moveY = currentVelY * frameDt;
-
-            if (Math.abs(currentVelX) < 0.05 && Math.abs(currentVelY) < 0.05) {
-                flingRafId = null;
-                return;
-            }
-
-            // Apply the move delta based on site logic
-            if (window.location.hostname === 'youtube.com') {
-                let ytdApp = targetElement ? targetElement.getElementsByTagName('ytd-app')[0] : null;
-                if (ytdApp && window.document.fullscreenElement) {
-                    ytdApp.scrollBy({ left: moveX, top: moveY, behavior: 'auto' });
-                } else if (targetElement && targetElement.scrollBy) {
-                    targetElement.scrollBy({ left: moveX, top: moveY, behavior: 'auto' });
-                }
-            } else if (window.location.hostname === 'www.nexusmods.com') {
-                getRealRoot().scrollBy({ left: moveX, top: moveY, behavior: 'auto' });
-            } else if (targetElement && targetElement.scrollBy) {
-                targetElement.scrollBy({ left: moveX, top: moveY, behavior: 'auto' });
-            }
-
-            flingRafId = requestAnimationFrame(flingStep);
-        }
-
-        flingRafId = requestAnimationFrame(flingStep);
-    }
-
-    function overflowingAncestor(element, horizontal) {
-        const body = document.body;
-        const root = window.document.documentElement
-        const rootScrollHeight = root.scrollHeight;
-        const rootScrollWidth = root.scrollWidth;
-        const isFrame = window.top !== window.self;
-
-        do {
-            if (horizontal && rootScrollWidth === element.scrollWidth ||
-                !horizontal && rootScrollHeight === element.scrollHeight) {
-                const topOverflowsNotHidden = overflowNotHidden(root, horizontal) && overflowNotHidden(body, horizontal);
-                const isOverflowCSS = topOverflowsNotHidden || overflowAutoOrScroll(root, horizontal);
-
-                if (isFrame && isContentOverflowing(root, horizontal) || !isFrame && isOverflowCSS) {
-
-                    return getScrollRoot()
-                }
-            } else if (isContentOverflowing(element, horizontal) && overflowAutoOrScroll(element, horizontal)) {
-                return element;
-            }
-        } while ((element = element.parentElement));
-    }
-
-    function isContentOverflowing(element, horizontal) {
-        const client = horizontal ? element.clientWidth : element.clientHeight;
-        const scroll = horizontal ? element.scrollWidth : element.scrollHeight;
-
-        return (client + 10 < scroll);
-    }
-
-    function computedOverflow(element, horizontal) {
-        return getComputedStyle(element, '').getPropertyValue(horizontal ? 'overflow-x' : 'overflow-y');
-    }
-
-    function overflowNotHidden(element, horizontal) {
-        return computedOverflow(element, horizontal) !== 'hidden';
-    }
-
-    function overflowAutoOrScroll(element, horizontal) {
-        return /^(scroll|auto)$/.test(computedOverflow(element, horizontal));
-    }
-
-    function getScrollRoot() {
-        return (document.scrollingElement || document.body);
-    }
-
-    function getRealRoot() {
-        return document.scrollingElement;
-    }
-
-    function message(message) {
-        if (message.data.CSS !== 'ChangeScrollSpeed') {
+        if (Math.abs(velX) < 0.05 && Math.abs(velY) < 0.05) {
+            isFlinging = false;
             return;
         }
 
-        let event = message.data;
-        event.target = getFrameByEvent(message.source);
-        wheel(event)
+        let dx = velX * frameDt;
+        let dy = velY * frameDt;
+
+        applyScroll(target, dx, dy);
+
+        flingRaf = requestAnimationFrame(step);
     }
 
-    function getFrameByEvent(source) {
-        const iframes = document.getElementsByTagName('iframe');
-
-        return [].filter.call(iframes, function (iframe) {
-            return iframe.contentWindow === source;
-        })[0];
-    }
-
-    function chromeMessage(message) {
-        if (message.scrollFactor) {
-            scrollFactor = message.scrollFactor
-        }
-        if (message.CSS === 'ChangeFlingSpeed') {
-            if (message.flingEnabled !== undefined) flingEnabled = (message.flingEnabled === 'true');
-            if (message.flingFriction !== undefined) flingFriction = message.flingFriction;
-            if (message.flingThreshold !== undefined) flingThreshold = message.flingThreshold;
-        }
-    }
-
-    const wheelEvent = 'onwheel' in document.createElement('div') ? 'wheel' : 'mousewheel';
-
-    const el = (window.document || window.document.body || window)
-
-    el.addEventListener(wheelEvent, wheel, { passive: false })
-
-    function getIFrame(frame) {
-        if ((frame !== null) && (frame !== 'undefined') && (frame.width > 0)) {
-            let el = frame;
-            el.addEventListener(wheelEvent, wheel, { passive: false })
-        }
-    }
-
-    getIFrame(window.document.querySelector('iframe'));
-
-    window.addEventListener('message', message);
-
-    chrome.runtime.onMessage.addListener(chromeMessage);
+    flingRaf = requestAnimationFrame(step);
 }
+
+function getScrollableParent(node, hasX, hasY) {
+    if (node == null) return null;
+
+    if (node === document.body || node === document.documentElement) {
+        return document.scrollingElement || document.documentElement;
+    }
+
+    try {
+        const style = window.getComputedStyle(node);
+        const overflowY = style.getPropertyValue('overflow-y');
+        const overflowX = style.getPropertyValue('overflow-x');
+        const isScrollableY = (overflowY === 'auto' || overflowY === 'scroll');
+        const isScrollableX = (overflowX === 'auto' || overflowX === 'scroll');
+
+        // Check if actually scrollable by content size
+        const canScrollY = isScrollableY && node.scrollHeight > node.clientHeight;
+        const canScrollX = isScrollableX && node.scrollWidth > node.clientWidth;
+
+        if ((hasY && canScrollY) || (hasX && canScrollX)) {
+            return node;
+        }
+    } catch (e) {
+        // Ignore errors from cross-origin/shadow DOM if any
+    }
+
+    return getScrollableParent(node.parentNode, hasX, hasY);
+}
+
+init();
+
+chrome.runtime.onMessage.addListener((message) => {
+    if (message.scrollFactor !== undefined) scrollFactor = parseFloat(message.scrollFactor);
+    if (message.CSS === 'ChangeFlingSpeed') {
+        if (message.flingEnabled !== undefined) flingEnabled = message.flingEnabled === 'true';
+        if (message.flingFriction !== undefined) flingFriction = parseFloat(message.flingFriction);
+        if (message.flingThreshold !== undefined) flingThreshold = parseFloat(message.flingThreshold);
+    }
+});

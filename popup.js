@@ -5,7 +5,7 @@ const statusText = document.getElementById('statusText');
 // User input elements
 const scrollFactorInput = document.getElementById('scrollFactorInput');
 const customSettingButton = document.getElementById('customSettingButton');
-const smoothScrollButton = document.getElementById('smoothScrollButton');
+
 
 const flingEnabledButton = document.getElementById('flingEnabledButton');
 const flingFrictionInput = document.getElementById('flingFrictionInput');
@@ -26,7 +26,7 @@ init();
 
 // Detects OS and set scroll speed
 async function init() {
-    let smoothScroll = await getSmoothScroll();
+
     let customSetting = await getCustomSetting();
     let disableExtension = await getDisableExtension();
     let os = await getOS();
@@ -53,14 +53,11 @@ async function init() {
             scrollFactorInput.disabled = true;
             scrollFactorSlider.disabled = true;
 
-            smoothScrollButton.disabled = true;
-            smoothScrollButton.checked = false;
-
             customSettingButton.checked = false;
 
             setScrollFactor(linuxSpeed);
         } else if (os == 'win') {
-            // TODO Some buginess here with smoothscroll toggle
+
             // Set Windows values
             osText.innerHTML = 'Windows';
             statusText.innerHTML = 'Disabled';
@@ -69,9 +66,6 @@ async function init() {
             scrollFactorSlider.value = windowsSpeed;
             scrollFactorInput.disabled = true;
             scrollFactorSlider.disabled = true;
-
-            smoothScrollButton.disabled = true;
-            smoothScrollButton.checked = true;
 
             customSettingButton.checked = false;
 
@@ -84,9 +78,6 @@ async function init() {
             scrollFactorSlider.value = macSpeed;
             scrollFactorInput.disabled = true;
             scrollFactorSlider.disabled = true;
-
-            smoothScrollButton.disabled = true;
-            smoothScrollButton.checked = true;
 
             customSettingButton.checked = false;
 
@@ -104,18 +95,13 @@ async function init() {
         scrollFactorInput.disabled = false;
         scrollFactorSlider.disabled = false;
 
-        smoothScrollButton.disabled = false;
 
         customSettingButton.checked = true;
 
-        if (smoothScroll == 'true') {
-            smoothScrollButton.checked = true;
-        } else {
-            smoothScrollButton.checked = false;
-        }
+
     }
 
-    updateSmoothScroll();
+
     updateDisableExtension(disableExtension);
 }
 
@@ -225,51 +211,6 @@ async function updateScrollFactor() {
 
 }
 
-// SMOOTH SCROLL
-
-// Get smoothscroll variable
-async function getSmoothScroll() {
-    let result = await getSetting('smoothScroll');
-
-    return result.smoothScroll;
-}
-
-// Set smoothscroll variable
-function setSmoothScroll(value) {
-    chrome.storage.local.set({ 'smoothScroll': value })
-}
-
-// Apply smooth scroll setting when button is pressed in popup.js
-function updateSmoothScroll() {
-
-    if (smoothScrollButton.checked == true) {
-        setSmoothScroll('true');
-        disableSmoothCSS(false);
-    } else {
-        setSmoothScroll('false');
-        disableSmoothCSS(true);
-    }
-}
-
-// This function disables and enables CSS smooth scrolling
-function disableSmoothCSS(value) {
-
-    if (value) {
-        // Code to insert
-        let code = `document.querySelectorAll("html")[0].style.scrollBehavior = "auto";`;
-
-        // Loop through all tabs and insert code
-        executeScriptAllTabs(code);
-
-    } else {
-        // Code to insert
-        let code = `document.querySelectorAll("html")[0].style.scrollBehavior = "";`;
-
-        // Loop through all tabs and insert code
-        executeScriptAllTabs(code);
-
-    }
-}
 
 function executeScriptAllTabs(code) {
 
@@ -367,9 +308,6 @@ function updateDisableExtension(previousValue) {
 
 // Custom setting button
 customSettingButton.addEventListener('change', updateCustomSetting);
-
-// Smooth Scroll button
-smoothScrollButton.addEventListener('change', updateSmoothScroll);
 
 // Generic sync function for slider and input
 function syncInputs(inputEl, sliderEl, setterFn) {
