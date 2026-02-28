@@ -7,6 +7,10 @@ const scrollFactorInput = document.getElementById('scrollFactorInput');
 const customSettingButton = document.getElementById('customSettingButton');
 const smoothScrollButton = document.getElementById('smoothScrollButton');
 
+const flingEnabledButton = document.getElementById('flingEnabledButton');
+const flingFrictionInput = document.getElementById('flingFrictionInput');
+const flingThresholdInput = document.getElementById('flingThresholdInput');
+
 // Default scroll speed variables
 const linuxSpeed = 0.15;
 const windowsSpeed = 1.0;
@@ -23,69 +27,77 @@ async function init() {
     let disableExtension = await getDisableExtension();
     let os = await getOS();
 
+    let flingEnabled = await getFlingEnabled();
+    let flingFriction = await getFlingFriction();
+    let flingThreshold = await getFlingThreshold();
+
+    flingEnabledButton.checked = flingEnabled === 'true';
+    flingFrictionInput.value = flingFriction;
+    flingThresholdInput.value = flingThreshold;
+
     // Do not initiate if custom settings is checked
-    if(customSetting !== 'true') {
-        if(os == 'linux') {
+    if (customSetting !== 'true') {
+        if (os == 'linux') {
             // Set Linux values
             osText.innerHTML = 'Linux';
             statusText.innerHTML = 'Enabled';
-            
+
             scrollFactorInput.value = linuxSpeed;
             scrollFactorInput.disabled = true;
 
             smoothScrollButton.disabled = true;
             smoothScrollButton.checked = false;
-            
+
             customSettingButton.checked = false;
 
             setScrollFactor(linuxSpeed);
-        } else if(os == 'win') {
+        } else if (os == 'win') {
             // TODO Some buginess here with smoothscroll toggle
             // Set Windows values
             osText.innerHTML = 'Windows';
             statusText.innerHTML = 'Disabled';
-            
+
             scrollFactorInput.value = windowsSpeed
             scrollFactorInput.disabled = true;
-            
+
             smoothScrollButton.disabled = true;
             smoothScrollButton.checked = true;
-            
+
             customSettingButton.checked = false;
 
             setScrollFactor(windowsSpeed);
-        } else if(os == 'mac') {
+        } else if (os == 'mac') {
             osText.innerHTML = 'MacOS';
             statusText.innerHTML = 'Disabled'
-            
+
             scrollFactorInput.value = macSpeed
             scrollFactorInput.disabled = true;
-            
+
             smoothScrollButton.disabled = true;
             smoothScrollButton.checked = true;
-            
+
             customSettingButton.checked = false;
-            
+
             setScrollFactor(macSpeed);
-        }      
+        }
     } else {
         // Custom settings
         let scrollFactor = await getScrollFactor();
 
         osText.innerHTML = 'Custom';
         statusText.innerHTML = 'Enabled';
-        
+
         scrollFactorInput.value = scrollFactor;
         scrollFactorInput.disabled = false;
-        
+
         smoothScrollButton.disabled = false;
-        
+
         customSettingButton.checked = true;
 
-        if(smoothScroll == 'true') {
+        if (smoothScroll == 'true') {
             smoothScrollButton.checked = true;
         } else {
-            smoothScrollButton.checked = false;       
+            smoothScrollButton.checked = false;
         }
     }
 
@@ -113,12 +125,58 @@ async function getOS() {
 async function getSetting(key) {
     return new Promise((resolve, reject) => {
         try {
-            chrome.storage.local.get(key, function(items){
+            chrome.storage.local.get(key, function (items) {
                 resolve(items);
             })
         }
         catch (ex) {
             reject(ex);
+        }
+    });
+}
+
+// FLING PARAMETERS
+async function getFlingEnabled() {
+    let result = await getSetting('flingEnabled');
+    return result.flingEnabled === undefined ? 'true' : result.flingEnabled;
+}
+function setFlingEnabled(value) {
+    chrome.storage.local.set({ 'flingEnabled': value });
+    updateFlingSettings();
+}
+
+async function getFlingFriction() {
+    let result = await getSetting('flingFriction');
+    return result.flingFriction === undefined ? 0.95 : parseFloat(result.flingFriction);
+}
+function setFlingFriction(value) {
+    chrome.storage.local.set({ 'flingFriction': value });
+    updateFlingSettings();
+}
+
+async function getFlingThreshold() {
+    let result = await getSetting('flingThreshold');
+    return result.flingThreshold === undefined ? 1.0 : parseFloat(result.flingThreshold);
+}
+function setFlingThreshold(value) {
+    chrome.storage.local.set({ 'flingThreshold': value });
+    updateFlingSettings();
+}
+
+function updateFlingSettings() {
+    let params = {
+        flingEnabled: flingEnabledButton.checked ? 'true' : 'false',
+        flingFriction: parseFloat(flingFrictionInput.value),
+        flingThreshold: parseFloat(flingThresholdInput.value)
+    };
+    chrome.tabs.query({ windowType: "normal" }, function (tabs) {
+        for (let i = 0; i < tabs.length; i++) {
+            chrome.tabs.sendMessage(tabs[i].id, {
+                flingEnabled: params.flingEnabled,
+                flingFriction: params.flingFriction,
+                flingThreshold: params.flingThreshold,
+                CSS: 'ChangeFlingSpeed'
+            });
         }
     });
 }
@@ -136,7 +194,7 @@ function setScrollFactor(value) {
     if (value < 0 || value > 1000) {
         return;
     } else {
-        chrome.storage.local.set({'scrollFactor': value});
+        chrome.storage.local.set({ 'scrollFactor': value });
     }
 
     updateScrollFactor();
@@ -145,9 +203,9 @@ function setScrollFactor(value) {
 async function updateScrollFactor() {
     let value = parseFloat(await getScrollFactor());
 
-    chrome.tabs.query({windowType: "normal"}, function(tabs) {
-        for(let i = 0; i < tabs.length; i++) {
-            chrome.tabs.sendMessage(tabs[i].id, {scrollFactor: value, CSS: 'ChangeScrollSpeed'});
+    chrome.tabs.query({ windowType: "normal" }, function (tabs) {
+        for (let i = 0; i < tabs.length; i++) {
+            chrome.tabs.sendMessage(tabs[i].id, { scrollFactor: value, CSS: 'ChangeScrollSpeed' });
         }
     });
 
@@ -164,13 +222,13 @@ async function getSmoothScroll() {
 
 // Set smoothscroll variable
 function setSmoothScroll(value) {
-    chrome.storage.local.set({'smoothScroll':value})
+    chrome.storage.local.set({ 'smoothScroll': value })
 }
 
 // Apply smooth scroll setting when button is pressed in popup.js
 function updateSmoothScroll() {
-    
-    if(smoothScrollButton.checked == true) {
+
+    if (smoothScrollButton.checked == true) {
         setSmoothScroll('true');
         disableSmoothCSS(false);
     } else {
@@ -182,36 +240,36 @@ function updateSmoothScroll() {
 // This function disables and enables CSS smooth scrolling
 function disableSmoothCSS(value) {
 
-        if(value) {
-            // Code to insert
-            let code = `document.querySelectorAll("html")[0].style.scrollBehavior = "auto";`;
+    if (value) {
+        // Code to insert
+        let code = `document.querySelectorAll("html")[0].style.scrollBehavior = "auto";`;
 
-            // Loop through all tabs and insert code
-            executeScriptAllTabs(code);
+        // Loop through all tabs and insert code
+        executeScriptAllTabs(code);
 
-        } else {
-            // Code to insert
-            let code = `document.querySelectorAll("html")[0].style.scrollBehavior = "";`;
+    } else {
+        // Code to insert
+        let code = `document.querySelectorAll("html")[0].style.scrollBehavior = "";`;
 
-            // Loop through all tabs and insert code
-            executeScriptAllTabs(code);
+        // Loop through all tabs and insert code
+        executeScriptAllTabs(code);
 
-        }
+    }
 }
 
 function executeScriptAllTabs(code) {
 
-    chrome.tabs.query({windowType: "normal"}, function(tabs) {
+    chrome.tabs.query({ windowType: "normal" }, function (tabs) {
 
-        for(let i = 0; i < tabs.length; i++) {
+        for (let i = 0; i < tabs.length; i++) {
             try {
-                if(tabs[i].url) {
-                    chrome.tabs.executeScript(tabs[i].id, { code }, function() {
-                        if(chrome.runtime.lastError) {} // Suppress error
-                    });  
+                if (tabs[i].url) {
+                    chrome.tabs.executeScript(tabs[i].id, { code }, function () {
+                        if (chrome.runtime.lastError) { } // Suppress error
+                    });
                 }
             }
-            catch(err) {
+            catch (err) {
                 console.log(err);
             }
         }
@@ -221,15 +279,15 @@ function executeScriptAllTabs(code) {
 // REFRESH TABS
 function refreshTab(message) {
 
-    if((message) && (confirm(message))) {
-        chrome.tabs.getAllInWindow(null, function(tabs) {
-            for(let i = 0; i < tabs.length; i++) {
-                chrome.tabs.update(tabs[i].id, {url: tabs[i].url});
+    if ((message) && (confirm(message))) {
+        chrome.tabs.getAllInWindow(null, function (tabs) {
+            for (let i = 0; i < tabs.length; i++) {
+                chrome.tabs.update(tabs[i].id, { url: tabs[i].url });
             }
         });
     } else {
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-            chrome.tabs.update(tabs[0].id, {url: tabs[0].url});
+        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+            chrome.tabs.update(tabs[0].id, { url: tabs[0].url });
         });
     };
 }
@@ -244,21 +302,21 @@ async function getCustomSetting() {
 
 // Set custom setting variable
 function setCustomSetting(value) {
-    chrome.storage.local.set({'customSetting': value});
+    chrome.storage.local.set({ 'customSetting': value });
 }
 
 // Apply custom setting variable in popup.js
 function updateCustomSetting() {
-    
-        // Enable custom settings
-        if(customSettingButton.checked == true) {
-            setCustomSetting('true');
-        } else {
-            setCustomSetting('false');
-        }
 
-        // Redetect settings
-        init();
+    // Enable custom settings
+    if (customSettingButton.checked == true) {
+        setCustomSetting('true');
+    } else {
+        setCustomSetting('false');
+    }
+
+    // Redetect settings
+    init();
 }
 
 // DISABLE EXTENSION
@@ -270,14 +328,14 @@ async function getDisableExtension() {
 }
 
 function setDisableExtension(value) {
-    chrome.storage.local.set({'disableExtension':value});
+    chrome.storage.local.set({ 'disableExtension': value });
 }
 
 function updateDisableExtension(previousValue) {
 
-    if(statusText.innerHTML == 'Enabled') {
+    if (statusText.innerHTML == 'Enabled') {
         setDisableExtension('false');
-        
+
         // Previous value - do refresh
         if (previousValue == 'true') {
             refreshTab('A tab refresh is required to enable the extension. Do you want to refresh all tabs? Press "Cancel" to just refresh current tab.')
@@ -285,7 +343,7 @@ function updateDisableExtension(previousValue) {
     } else {
         setDisableExtension('true');
 
-        if(previousValue == 'false') {
+        if (previousValue == 'false') {
             refreshTab('A tab refresh is required to disable the extension. Do you want to refresh all tabs? Press "Cancel" to just refresh current tab.')
         }
     }
@@ -306,4 +364,22 @@ scrollFactorInput.addEventListener('change', () => {
 
 scrollFactorInput.addEventListener('keyup', () => {
     setScrollFactor(scrollFactorInput.value);
+});
+
+flingEnabledButton.addEventListener('change', () => {
+    setFlingEnabled(flingEnabledButton.checked ? 'true' : 'false');
+});
+
+flingFrictionInput.addEventListener('change', () => {
+    setFlingFriction(flingFrictionInput.value);
+});
+flingFrictionInput.addEventListener('keyup', () => {
+    setFlingFriction(flingFrictionInput.value);
+});
+
+flingThresholdInput.addEventListener('change', () => {
+    setFlingThreshold(flingThresholdInput.value);
+});
+flingThresholdInput.addEventListener('keyup', () => {
+    setFlingThreshold(flingThresholdInput.value);
 });
