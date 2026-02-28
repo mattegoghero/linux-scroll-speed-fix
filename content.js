@@ -165,12 +165,66 @@ function attemptFling(target) {
     let speed = Math.sqrt(velX * velX + velY * velY);
     if (speed < flingThreshold) return;
 
+    // Deceleration check: dynamically analyze velocity trend
+    // Instead of a static threshold, we check if the velocity over the recent points 
+    // exhibits a consistent declining trend that indicates stopping.
+    let isDecelerating = false;
+    if (recentWheelEvents.length >= 4) {
+        let vels = [];
+        for (let i = 1; i < recentWheelEvents.length; i++) {
+            let ev1 = recentWheelEvents[i - 1];
+            let ev2 = recentWheelEvents[i];
+            let idt = ev2.time - ev1.time;
+            if (idt > 0) {
+                let pVel = Math.sqrt(Math.pow(ev2.x, 2) + Math.pow(ev2.y, 2)) / idt;
+                vels.push({ v: pVel, t: ev2.time });
+            }
+        }
+
+        if (vels.length >= 3) {
+            // Simple linear regression on velocities (v = m*t + q)
+            // If m is significantly negative, user is decelerating
+            let sumT = 0, sumV = 0, sumTV = 0, sumT2 = 0;
+            let n = vels.length;
+            let t0 = vels[0].t; // Normalize time to avoid large floats
+            for (let point of vels) {
+                let t = point.t - t0;
+                sumT += t;
+                sumV += point.v;
+                sumTV += t * point.v;
+                sumT2 += t * t;
+            }
+
+            let numerator = (n * sumTV) - (sumT * sumV);
+            let denominator = (n * sumT2) - (sumT * sumT);
+
+            if (denominator !== 0) {
+                let slope = numerator / denominator;
+
+                // If velocity is dropping consistently (negative slope) 
+                // AND the final velocity is lower than the average velocity of the swipe
+                let avgVel = sumV / n;
+                let finalVel = vels[vels.length - 1].v;
+
+                if (slope < -0.01 && finalVel < avgVel) {
+                    isDecelerating = true;
+                }
+            }
+        }
+    }
+
+    if (isDecelerating) {
+        return;
+    }
+
     isFlinging = true;
     startFlingAnimation(target, velX, velY, now);
 }
 
 function startFlingAnimation(target, velX, velY, startTime) {
     let lastTime = startTime;
+    let remainderX = 0;
+    let remainderY = 0;
 
     function step(currentTime) {
         if (!isFlinging) return;
@@ -179,6 +233,7 @@ function startFlingAnimation(target, velX, velY, startTime) {
         lastTime = currentTime;
 
         if (frameDt > 100) frameDt = 16.666; // Prevent jumps on lag
+        else if (frameDt <= 0) frameDt = 16.666;
 
         let decay = Math.pow(flingFriction, frameDt / 16.666);
         velX *= decay;
@@ -189,10 +244,18 @@ function startFlingAnimation(target, velX, velY, startTime) {
             return;
         }
 
-        let dx = velX * frameDt;
-        let dy = velY * frameDt;
+        let exactDx = (velX * frameDt) + remainderX;
+        let exactDy = (velY * frameDt) + remainderY;
 
-        applyScroll(target, dx, dy);
+        let dx = Math.trunc(exactDx);
+        let dy = Math.trunc(exactDy);
+
+        remainderX = exactDx - dx;
+        remainderY = exactDy - dy;
+
+        if (dx !== 0 || dy !== 0) {
+            applyScroll(target, dx, dy);
+        }
 
         flingRaf = requestAnimationFrame(step);
     }
