@@ -1,60 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="utf-8">
-        <title>Linux Scroll Speed Fix</title>
 
-        <link rel="stylesheet" href="popup.css">
-    </head>
-    <body>
-        <label class="title">Linux Scroll Speed Fix</label>
+<head>
+    <meta charset="utf-8">
+    <title>Linux Scroll Speed Fix</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
 
-        <div class="os-wrapper">
-            <div class="osDetected">
-                <label for="osDetected">OS detected:</label>
-                <label id="osDetected">Unknown</label>
+<body>
+    <div class="header">
+        <h1>Linux Scroll Speed Fix</h1>
+    </div>
+
+    <div class="container">
+        <div class="card status-card">
+            <div class="status-row">
+                <span class="label">OS Detected</span>
+                <span class="value badge" id="osDetected">Unknown</span>
             </div>
-            <div class="statusText">
-                <label for="statusText">Status:</label>
-                <label id="statusText">Unknown</label>
+            <div class="status-row">
+                <span class="label">Status</span>
+                <span class="value badge" id="statusText">Unknown</span>
             </div>
         </div>
 
-        <div class="scroll-wrapper">
-            <label for="scrollFactorInput">Scroll factor:</label>
-            <input id="scrollFactorInput" type="number" min="0" max="1000" step="0.1" value="1">
-            <label>Customize speed:
-                <input id="customSettingButton" type="checkbox">
-            </label>
+        <div class="card">
+            <div class="card-header">
+                <h2>Scroll Speed</h2>
+                <label class="toggle" title="Customize Speed">
+                    <input id="customSettingButton" type="checkbox">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="input-group">
+                <label for="scrollFactorInput">Scroll Factor</label>
+                <div class="slider-container">
+                    <input id="scrollFactorSlider" class="range-slider" type="range" min="0.1" max="3" step="0.05"
+                        value="1">
+                    <input id="scrollFactorInput" type="number" min="0" max="1000" step="0.05" value="1">
+                </div>
+            </div>
+
+            <div class="toggle-group mt-2">
+                <label>CSS Scroll Smoothing</label>
+                <label class="toggle">
+                    <input id="smoothScrollButton" type="checkbox">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="setting-description">
+                Smooth scrolling enabled by CSS. Disable this when using the extension in Linux, or when altering scroll
+                speed to prevent lag.
+            </div>
         </div>
 
-        <div class="smooth-wrapper">
-            <label for="smoothScrollButton">CSS scroll smoothing:
-                <input id="smoothScrollButton" type="checkbox">
-            </label>
-            <label id="recommended"><span data-text="Smooth scrolling enabled by CSS. 
-                It is highly recommended to disable this type of smoothing when using the extension in Linux,
-                 or when altering the scroll speed at all. It can be laggy."
-                class="tooltip">(What is this?)
-            </span></label>
-            
+        <div class="card">
+            <div class="card-header">
+                <h2>Fling (Inertia)</h2>
+                <label class="toggle" title="Enable Fling">
+                    <input id="flingEnabledButton" type="checkbox">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="input-group">
+                <label for="flingFrictionInput">Friction</label>
+                <div class="slider-container">
+                    <input id="flingFrictionSlider" class="range-slider" type="range" min="0.80" max="0.99" step="0.01"
+                        value="0.95">
+                    <input id="flingFrictionInput" type="number" min="0.80" max="0.99" step="0.01" value="0.95">
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label for="flingThresholdInput">Threshold</label>
+                <div class="slider-container">
+                    <input id="flingThresholdSlider" class="range-slider" type="range" min="0.1" max="10.0" step="0.1"
+                        value="1.0">
+                    <input id="flingThresholdInput" type="number" min="0.1" max="10.0" step="0.1" value="1.0">
+                </div>
+            </div>
+            <div class="setting-description">
+                Minimum velocity to trigger fling (pixels/ms).
+            </div>
         </div>
 
-        <div class="fling-wrapper" style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 10px;">
-            <label><strong>Fling (Inertia) Settings</strong></label><br>
-            <label for="flingEnabledButton">Enable Fling:
-                <input id="flingEnabledButton" type="checkbox">
-            </label><br>
-            <label for="flingFrictionInput">Fling Friction:</label>
-            <input id="flingFrictionInput" type="number" min="0.80" max="0.99" step="0.01" value="0.95"><br>
-            <label for="flingThresholdInput">Fling Threshold (<span class="tooltip" data-text="Minimum velocity to trigger fling (pixels/ms).">info</span>):</label>
-            <input id="flingThresholdInput" type="number" min="0.1" max="10.0" step="0.1" value="1.0">
+        <div class="footer">
+            <a href="https://github.com/mattegoghero/linux-scroll-speed-fix" target="_blank" class="github-link">
+                <svg height="16" viewBox="0 0 16 16" width="16" fill="currentColor">
+                    <path fill-rule="evenodd"
+                        d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z">
+                    </path>
+                </svg>
+                GitHub
+            </a>
+            <span class="version">v1.7.2</span>
         </div>
-        <div class="version">
-            <label id="github-link"><a href="https://github.com/Dedas/linux-scroll-speed-fix.git" target="_blank">Github page<a></label>
-            <label id="version">Version 1.7.2</label>
-        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
 
-        <script type="text/javascript" src="popup.js"></script>
-    </body>
 </html>

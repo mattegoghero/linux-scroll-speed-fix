@@ -11,6 +11,10 @@ const flingEnabledButton = document.getElementById('flingEnabledButton');
 const flingFrictionInput = document.getElementById('flingFrictionInput');
 const flingThresholdInput = document.getElementById('flingThresholdInput');
 
+const scrollFactorSlider = document.getElementById('scrollFactorSlider');
+const flingFrictionSlider = document.getElementById('flingFrictionSlider');
+const flingThresholdSlider = document.getElementById('flingThresholdSlider');
+
 // Default scroll speed variables
 const linuxSpeed = 0.15;
 const windowsSpeed = 1.0;
@@ -34,6 +38,8 @@ async function init() {
     flingEnabledButton.checked = flingEnabled === 'true';
     flingFrictionInput.value = flingFriction;
     flingThresholdInput.value = flingThreshold;
+    flingFrictionSlider.value = flingFriction;
+    flingThresholdSlider.value = flingThreshold;
 
     // Do not initiate if custom settings is checked
     if (customSetting !== 'true') {
@@ -43,7 +49,9 @@ async function init() {
             statusText.innerHTML = 'Enabled';
 
             scrollFactorInput.value = linuxSpeed;
+            scrollFactorSlider.value = linuxSpeed;
             scrollFactorInput.disabled = true;
+            scrollFactorSlider.disabled = true;
 
             smoothScrollButton.disabled = true;
             smoothScrollButton.checked = false;
@@ -58,7 +66,9 @@ async function init() {
             statusText.innerHTML = 'Disabled';
 
             scrollFactorInput.value = windowsSpeed
+            scrollFactorSlider.value = windowsSpeed;
             scrollFactorInput.disabled = true;
+            scrollFactorSlider.disabled = true;
 
             smoothScrollButton.disabled = true;
             smoothScrollButton.checked = true;
@@ -71,7 +81,9 @@ async function init() {
             statusText.innerHTML = 'Disabled'
 
             scrollFactorInput.value = macSpeed
+            scrollFactorSlider.value = macSpeed;
             scrollFactorInput.disabled = true;
+            scrollFactorSlider.disabled = true;
 
             smoothScrollButton.disabled = true;
             smoothScrollButton.checked = true;
@@ -88,7 +100,9 @@ async function init() {
         statusText.innerHTML = 'Enabled';
 
         scrollFactorInput.value = scrollFactor;
+        scrollFactorSlider.value = scrollFactor;
         scrollFactorInput.disabled = false;
+        scrollFactorSlider.disabled = false;
 
         smoothScrollButton.disabled = false;
 
@@ -357,29 +371,28 @@ customSettingButton.addEventListener('change', updateCustomSetting);
 // Smooth Scroll button
 smoothScrollButton.addEventListener('change', updateSmoothScroll);
 
-// Scroll factor input field
-scrollFactorInput.addEventListener('change', () => {
-    setScrollFactor(scrollFactorInput.value);
-});
+// Generic sync function for slider and input
+function syncInputs(inputEl, sliderEl, setterFn) {
+    inputEl.addEventListener('input', () => {
+        sliderEl.value = inputEl.value;
+    });
+    inputEl.addEventListener('change', () => {
+        setterFn(inputEl.value);
+    });
+    inputEl.addEventListener('keyup', () => {
+        setterFn(inputEl.value);
+    });
 
-scrollFactorInput.addEventListener('keyup', () => {
-    setScrollFactor(scrollFactorInput.value);
-});
+    sliderEl.addEventListener('input', () => {
+        inputEl.value = sliderEl.value;
+        setterFn(sliderEl.value);
+    });
+}
+
+syncInputs(scrollFactorInput, scrollFactorSlider, setScrollFactor);
+syncInputs(flingFrictionInput, flingFrictionSlider, setFlingFriction);
+syncInputs(flingThresholdInput, flingThresholdSlider, setFlingThreshold);
 
 flingEnabledButton.addEventListener('change', () => {
     setFlingEnabled(flingEnabledButton.checked ? 'true' : 'false');
-});
-
-flingFrictionInput.addEventListener('change', () => {
-    setFlingFriction(flingFrictionInput.value);
-});
-flingFrictionInput.addEventListener('keyup', () => {
-    setFlingFriction(flingFrictionInput.value);
-});
-
-flingThresholdInput.addEventListener('change', () => {
-    setFlingThreshold(flingThresholdInput.value);
-});
-flingThresholdInput.addEventListener('keyup', () => {
-    setFlingThreshold(flingThresholdInput.value);
 });
