@@ -3,6 +3,7 @@
 let scrollFactor = 1.0;
 let flingEnabled = true;
 let flingFriction = 0.95;
+let flingDeceleration = 0.01;
 let flingThreshold = 1.0;
 
 let recentWheelEvents = [];
@@ -45,6 +46,9 @@ async function init() {
 
     let fF = await getSetting('flingFriction');
     flingFriction = fF && fF.flingFriction !== undefined ? parseFloat(fF.flingFriction) : 0.95;
+
+    let fD = await getSetting('flingDeceleration');
+    flingDeceleration = fD && fD.flingDeceleration !== undefined ? parseFloat(fD.flingDeceleration) : 0.01;
 
     let fT = await getSetting('flingThreshold');
     flingThreshold = fT && fT.flingThreshold !== undefined ? parseFloat(fT.flingThreshold) : 1.0;
@@ -206,7 +210,7 @@ function attemptFling(target) {
                 let avgVel = sumV / n;
                 let finalVel = vels[vels.length - 1].v;
 
-                if (slope < -0.01 && finalVel < avgVel) {
+                if (slope < -flingDeceleration && finalVel < avgVel) {
                     isDecelerating = true;
                 }
             }
@@ -298,6 +302,7 @@ chrome.runtime.onMessage.addListener((message) => {
     if (message.CSS === 'ChangeFlingSpeed') {
         if (message.flingEnabled !== undefined) flingEnabled = message.flingEnabled === 'true';
         if (message.flingFriction !== undefined) flingFriction = parseFloat(message.flingFriction);
+        if (message.flingDeceleration !== undefined) flingDeceleration = parseFloat(message.flingDeceleration);
         if (message.flingThreshold !== undefined) flingThreshold = parseFloat(message.flingThreshold);
     }
 });

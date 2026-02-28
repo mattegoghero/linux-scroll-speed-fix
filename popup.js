@@ -9,10 +9,12 @@ const customSettingButton = document.getElementById('customSettingButton');
 
 const flingEnabledButton = document.getElementById('flingEnabledButton');
 const flingFrictionInput = document.getElementById('flingFrictionInput');
+const flingDecelerationInput = document.getElementById('flingDecelerationInput');
 const flingThresholdInput = document.getElementById('flingThresholdInput');
 
 const scrollFactorSlider = document.getElementById('scrollFactorSlider');
 const flingFrictionSlider = document.getElementById('flingFrictionSlider');
+const flingDecelerationSlider = document.getElementById('flingDecelerationSlider');
 const flingThresholdSlider = document.getElementById('flingThresholdSlider');
 
 // Default scroll speed variables
@@ -33,12 +35,15 @@ async function init() {
 
     let flingEnabled = await getFlingEnabled();
     let flingFriction = await getFlingFriction();
+    let flingDeceleration = await getFlingDeceleration();
     let flingThreshold = await getFlingThreshold();
 
     flingEnabledButton.checked = flingEnabled === 'true';
     flingFrictionInput.value = flingFriction;
+    flingDecelerationInput.value = flingDeceleration;
     flingThresholdInput.value = flingThreshold;
     flingFrictionSlider.value = flingFriction;
+    flingDecelerationSlider.value = flingDeceleration;
     flingThresholdSlider.value = flingThreshold;
 
     // Do not initiate if custom settings is checked
@@ -154,6 +159,15 @@ function setFlingFriction(value) {
     updateFlingSettings();
 }
 
+async function getFlingDeceleration() {
+    let result = await getSetting('flingDeceleration');
+    return result.flingDeceleration === undefined ? 0.01 : parseFloat(result.flingDeceleration);
+}
+function setFlingDeceleration(value) {
+    chrome.storage.local.set({ 'flingDeceleration': value });
+    updateFlingSettings();
+}
+
 async function getFlingThreshold() {
     let result = await getSetting('flingThreshold');
     return result.flingThreshold === undefined ? 1.0 : parseFloat(result.flingThreshold);
@@ -167,6 +181,7 @@ function updateFlingSettings() {
     let params = {
         flingEnabled: flingEnabledButton.checked ? 'true' : 'false',
         flingFriction: parseFloat(flingFrictionInput.value),
+        flingDeceleration: parseFloat(flingDecelerationInput.value),
         flingThreshold: parseFloat(flingThresholdInput.value)
     };
     chrome.tabs.query({ windowType: "normal" }, function (tabs) {
@@ -174,6 +189,7 @@ function updateFlingSettings() {
             chrome.tabs.sendMessage(tabs[i].id, {
                 flingEnabled: params.flingEnabled,
                 flingFriction: params.flingFriction,
+                flingDeceleration: params.flingDeceleration,
                 flingThreshold: params.flingThreshold,
                 CSS: 'ChangeFlingSpeed'
             });
@@ -329,6 +345,7 @@ function syncInputs(inputEl, sliderEl, setterFn) {
 
 syncInputs(scrollFactorInput, scrollFactorSlider, setScrollFactor);
 syncInputs(flingFrictionInput, flingFrictionSlider, setFlingFriction);
+syncInputs(flingDecelerationInput, flingDecelerationSlider, setFlingDeceleration);
 syncInputs(flingThresholdInput, flingThresholdSlider, setFlingThreshold);
 
 flingEnabledButton.addEventListener('change', () => {
