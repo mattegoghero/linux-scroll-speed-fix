@@ -8,7 +8,7 @@ const customSettingButton = document.getElementById('customSettingButton');
 const smoothScrollButton = document.getElementById('smoothScrollButton');
 
 // Default scroll speed variables
-const linuxSpeed = 1.9;
+const linuxSpeed = 0.15;
 const windowsSpeed = 1.0;
 const macSpeed = 1.0;
 
